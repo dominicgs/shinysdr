@@ -45,6 +45,8 @@ define(['./basic', './dbui',
   const numberT = types.numberT;
   
   const exports = Object.create(null);
+
+  var drawFlag = false;   // JG using this to try and prevent initial drawing of band labels
   
   // Widget for a monitor block
   function Monitor(config) {
@@ -1076,6 +1078,7 @@ define(['./basic', './dbui',
     });
     
     function draw() {
+      console.log("function draw");     // JG added this
       minLevel = minLevelCell.depend(draw);
       maxLevel = maxLevelCell.depend(draw);
       let count = 0;  // sanity check
@@ -1162,16 +1165,64 @@ define(['./basic', './dbui',
       };
       return el;
     }
+
     function addBand(record) {
       const el = document.createElement('span');
       el.className = 'freqscale-band';
+
+      // JG add start
+      /* 
+        JG this is where the label text is set, could possibly use this method and make our own
+        text drawing function and pull in the record.label || record.mode content to our draw
+        or possibly just modify the existing draw to do what we want
+
+        Add a button in the menu for the user to select or deselect the new label method
+      */
+      // this draws a box on bottom, not what we need
+      var rfWindow = document.getElementById("rf-spectrum-monitor");
+      var textBox = rfWindow.appendChild(document.createElement('div'));
+      textBox.textContent = record.label || record.mode;  // this looks really bad, prints a bunch of times, maybe because it's a div?
+      console.log("addBand");
+      // JG add end
+
       el.textContent = record.label || record.mode;
       el.my_update = function () {
+        console.log("\n\naddBand:el.my_update = function()\n\n");   // JG added
         var labelLower = Math.max(record.lowerFreq, lower);
         var labelUpper = Math.min(record.upperFreq, upper);
         el.style.left = view.freqToCSSLeft(labelLower);
         el.style.width = view.freqToCSSLength(labelUpper - labelLower);
         el.style.bottom = pickY(record.lowerFreq, record.upperFreq) + 'em';
+
+        // JG add start
+        var mouse_x_pos;
+        var left;
+        var width;
+
+        var offset = $("#rf-spectrum-monitor").offset();
+        $(document).mousemove(function(e) {
+          //console.log("mousemove function");
+          mouse_x_pos = e.pageX - offset.left;
+          //console.log("mouse_x_pos: ", mouse_x_pos);
+          //console.log("el.style.left: ", el.style.left);
+          //console.log("el.style.width: ", el.style.width);
+          left = parseFloat(el.style.left);
+          width = parseFloat(el.style.width);
+          //console.log("left: ", left);
+          //console.log("width: ", width);
+
+          // this draws the correct label on mouseover but the mouse has to leave the RF Spectrum 
+          // window to change which label gets drawn
+          if (mouse_x_pos > left && mouse_x_pos < left + width) {
+            //console.log("if success");
+            el.style.display = 'block';
+          }
+          else {
+            //console.log("else success");
+            el.style.display = 'none';
+          }
+        })
+        // JG add end
       };
       return el;
     }
@@ -1200,6 +1251,7 @@ define(['./basic', './dbui',
     var scale_fine2 = 2;
     
     var draw = config.boundedFn(function drawImpl() {
+      console.log("var draw");  // JG added this
       view.n.listen(draw);
       lower = view.leftFreq();
       upper = view.rightFreq();
@@ -1240,11 +1292,68 @@ define(['./basic', './dbui',
       query.n.listen(draw);
       query.forEach(function (record) {
         var label = labelCache.add(record);
-        if (label) label.my_update();
+        if (label) label.my_update();   // this just does the style stuff (I think)
       });
       labelCache.flush();
     });
     draw.scheduler = config.scheduler;
+
+    /*
+      JG added this stuff
+      this is a messy way to get the window to not display band labels on "startup"
+      startup as in when the user mouses over any of the window
+      should find a better way to do this as it doesn't guarantee that the labels won't be drawn on startup
+      and I still need to change labels to only draw one label and draw it where the mouse is on the spectrum
+
+      Add a menu button to select/deselect this label method
+    */
+
+    // initialize hidden labels, this can go away once we have the menu button
+    if (!drawFlag) {
+      document.addEventListener("mouseover", menuFunc);
+      function menuFunc() {
+        console.log("menuFunc");
+        console.log("drawFlag: ", drawFlag);
+        var labels = document.getElementsByClassName("freqscale-band");
+        for (var i = 0; i < labels.length; ++i) {
+          document.getElementsByClassName("freqscale-band")[i].style.display = 'none';
+        }
+        document.removeEventListener("mouseover", menuFunc);
+        drawFlag = true;
+        console.log("drawFlag: ", drawFlag);
+      }
+    }
+/*
+    // draw labels on RF Spectrum window mouseover
+    document.getElementById("rf-spectrum-monitor").addEventListener("mouseover", drawFunc);
+    function drawFunc() {
+      console.log("drawFunc");
+      //draw();
+      var labels = document.getElementsByClassName("freqscale-band");
+        for (var i = 0; i < labels.length; ++i) {
+          // maybe try adding something here to check mouse location on the window
+          // and only draw a label if the mouse is within the width of that label
+          // so there can be at most one label drawn at a time
+          document.getElementsByClassName("freqscale-band")[i].style.display = 'block';
+        }
+    }
+   
+    // hide labels on RF Spectrum window mouseout
+    document.getElementById("rf-spectrum-monitor").addEventListener("mouseout", hideFunc);
+    function hideFunc() {
+      console.log("hideFunc");
+      var labels = document.getElementsByClassName("freqscale-band");
+        for (var i = 0; i < labels.length; ++i) {
+          document.getElementsByClassName("freqscale-band")[i].style.display = 'none';
+        }
+    }
+*/
+    /*
+      This successfully draws the original annotation method on mouseover of the RF Spectrum window
+      but it persists when mouse is no longer over the RF window
+      now I need to modify what draw actually does with the annotations
+      JG end of stuff I added here
+    */
     draw();
   }
   
